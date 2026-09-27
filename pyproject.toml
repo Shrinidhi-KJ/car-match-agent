@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "carmatch"
+version = "0.1.0"
+description = "LangGraph agent that matches used-car requests to listings, evaluated against a hand-written gold set"
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph==1.2.12",
+    "langchain-core==1.6.5",
+    "langchain-groq==1.1.3",
+    "langchain-openai==1.6.6",
+    "pandas==3.0.6",
+    "pydantic==2.13.5",
+    "python-dotenv==1.2.3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.1.1"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: calls a real LLM over the network; excluded from CI with -m 'not slow'",
+]
