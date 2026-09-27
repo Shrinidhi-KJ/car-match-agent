@@ -247,3 +247,9 @@ I checked all 6 of A's provider-rejected attempts against the data:
 - **5** (`tool_use_failed`: s02 ×3, s05, s07) are complete `submit_answer` payloads under the tool name `json` or `commentary`. All 5 pass our `SubmitAnswerArgs` schema, and every listing ID in them exists.
 - **1** (`output_parse_failed`, s07) is plain text, not a tool payload.
 - None of the 6 were search or market_summary calls.
+
+## Steps 7 and 8: CI pin and push
+
+- `ci.yml`: `runs-on: ubuntu-24.04` (was `ubuntu-latest`).
+- Pushed `main` `9c314d8..d7183e5`, no force. GitHub Actions run 36346670320 **passed** (unit-tests, 27 s, 77 tests) on ubuntu-24.04. The "ubuntu-latest will migrate" warning no longer appears. The Node 20 deprecation warning for `actions/checkout@v4` / `actions/setup-python@v5` remains.
+- Default model unchanged: `openai/gpt-oss-120b`, `reasoning_effort="low"`.
