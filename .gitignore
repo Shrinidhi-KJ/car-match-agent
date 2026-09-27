@@ -6,3 +6,4 @@ __pycache__/
 
 # Kaggle CSV: licence is CC0, but PLAN.md Phase 0 says do not commit it until Shrinidhi decides
 data/raw/*.csv
+*.egg-info/
