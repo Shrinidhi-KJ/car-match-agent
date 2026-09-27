@@ -183,3 +183,13 @@ Built around the query A3 / year_min 2018 / Automatic / mileage_max 40000 / pric
 - **Run as `python -m eval.run_eval`** from the repo root. Added `eval/__init__.py` and `pythonpath = ["."]` in the pytest config so tests import `eval.*`. `eval` isn't an installed package, which is deliberate because it's not part of the library.
 - **Added `tests/test_run_eval.py`** (not in the PLAN.md layout): pacing, retries, guards, and an end-to-end run with the scripted fake model on `mini.csv`.
 - **CI:** GitHub Actions on push and pull request, ubuntu-latest, Python 3.11, `pip install -e ".[dev]"`, `pytest -m "not slow"`. No secrets needed.
+
+---
+
+## Harness fixes from the smoke run (2026-09-27)
+
+These fix harness infrastructure. The system prompt and tool descriptions were **not** changed; the prompt fingerprint is still `eca9cd476398…`.
+
+- **Keep the partial trace when a run raises.** The harness now uses `graph.stream(..., stream_mode="values")` and keeps the last state. Motivation: in smoke run 1, s02 raised on its 4th LLM call and the whole trace was lost, so constraint parsing was wrongly scored "no" even though the search had the right arguments. Rejected: `invoke()` plus re-reading messages from logs.
+- **Retry Groq `400 tool_use_failed` up to 2 times.** Each retry is logged (`llm_retry_tool_use_failed`), counted per task and in the summary table, and its estimated tokens are added to the pacing window. Motivation: in smoke run 1, gpt-oss-120b sent a tool call named `json`, which Groq rejects before our code sees it. Why retry: it's a model output-format glitch, the retry is visible in every report, and it can't turn a wrong answer into a right one. Rejected: no retry (one glitch kills the task), and silent retry (would hide the failure). **The same error recurred on both retries in smoke run 2** (tool named `commentary`), so at temperature 0 the retry doesn't rescue this case. See the open question in CHECKPOINTS.md.
+- **The pacer now counts tokens from failed generations.** Motivation: smoke run 2 hit one 429 on s03 right after s02's three failed attempts, which the pacer hadn't counted.

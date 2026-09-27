@@ -81,3 +81,34 @@ Removed the three unused worktrees (`../cm-tools`, `../cm-graph`, `../cm-eval`) 
 - Run 3 (after fixing the print with `ascii()`): **passed.** 2 LLM calls. The first search's args were `{model: Q3, year_min: 2019, transmission: Automatic, mileage_max: 30000, price_max: 25000}`; then `submit_answer` with `match` and `L08494, L08499, L07328`.
 
 **Also fixed:** `run_eval.py` now reconfigures stdout with `errors="replace"`, so the same console problem can't crash an eval run while it prints its summary. The results files are written as UTF-8 regardless.
+
+---
+
+## Step 5: smoke run (pipeline check only, not an evaluation)
+
+`eval/smoke/smoke.jsonl` holds 3 requests invented by Claude Code, not gold and not written by the broker:
+- s01: an A1 clean match (4 real listings fit).
+- s02: an A3 manual, 2019 or newer, under 10k miles and up to £15,000. Nothing fits; relaxing price alone finds cars from £15,700.
+- s03: a vague "reliable family car".
+
+**Smoke run 1** (`smoke_20260927-094850`, commit `baaee16`, marked dirty because `smoke.jsonl` wasn't committed yet):
+- s01 and s03 ended as expected.
+- s02 errored: on the 4th LLM call, gpt-oss-120b emitted a tool call named `json` and Groq rejected it (400 `tool_use_failed`).
+- The trace was lost, a harness bug that is now fixed.
+
+**Smoke run 2** (`smoke_20260927-095107`, commit `a9f28a8`, clean), after the harness fixes:
+- s01 `match` (2 calls). s03 `ask_customer` (1 call).
+- s02: search (0 found) → market_summary → search with `price_max` 16000 (3 found) → the submit attempt came out as a tool named `commentary`, and was rejected 3 times (original plus 2 retries) → recorded as an error. The partial trace was kept and constraint parsing scored correctly.
+- Token use: 6 successful LLM calls, 7,974 input and 499 output tokens (failed attempts not included in these counts). One 429 retry and 2 malformed-tool-call retries. 66 s wall-clock, of which about 59 s was a pacing wait inside s02.
+
+**What this shows:**
+- The pipeline works end to end: real tool calling, all four tools, terminal routing, scoring, logs, pacing and 429 retry.
+- One real problem: **gpt-oss-120b on Groq can emit its internal channel names (`json`, `commentary`) as tool names**, here when submitting after a relaxation. It reproduced on every attempt at temperature 0.
+
+**For Shrinidhi to decide** (not changed here, to avoid tuning on non-dev data): whether to handle this in Phase 3 using dev failures. Options:
+- (a) Leave it and count it as a failure.
+- (b) Try `reasoning_effort="medium"`.
+- (c) Try the NIM fallback or another model.
+- (d) Accept a small prompt or description change motivated by a dev failure.
+
+**After this run:** the pacer now also counts the tokens used by failed generations. I didn't rerun the smoke set after that change.

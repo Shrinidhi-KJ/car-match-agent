@@ -163,6 +163,7 @@ class EvalCaller:
                 if is_tool_use_failed(exc) and tool_failed < self.max_tool_use_failed_retries:
                     tool_failed += 1
                     self.stats["tool_use_failed_retries"] += 1
+                    self.pacer.record(estimate)  # the failed generation still used tokens
                     self.log.write("llm_retry_tool_use_failed", task_id=self.task_id, attempt=tool_failed,
                                    error=repr(exc)[:500])
                     continue

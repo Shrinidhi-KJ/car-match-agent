@@ -1,0 +1,355 @@
+{
+  "meta": {
+    "name": "smoke",
+    "timestamp": "20260927-095107",
+    "tasks_file": "eval\\smoke\\smoke.jsonl",
+    "tasks_sha256": "031fef6b6d14d83985cd786074c1ffafc0ba9cb3d59762c582db94119181f66c",
+    "model": "openai/gpt-oss-120b",
+    "reasoning_effort": "low",
+    "prompt_fingerprint": "eca9cd476398938e527a0da5a2234323df000116215dbdd89e9d36221313b258",
+    "pacing_budget_tokens_per_min": 7200,
+    "git": {
+      "commit": "a9f28a8b744f94650a2cc69ba72054fc813072db",
+      "dirty": false
+    }
+  },
+  "summary": {
+    "tasks": 3,
+    "outcome_correct": {
+      "correct": 2,
+      "of": 3
+    },
+    "tools_correct": {
+      "correct": 2,
+      "of": 3
+    },
+    "constraints_correct": {
+      "correct": 2,
+      "of": 2
+    },
+    "relaxed_correct": {
+      "correct": 0,
+      "of": 1
+    },
+    "false_fit": 0,
+    "relaxed_extra_violation": 0,
+    "gave_up": 0,
+    "errors": 1,
+    "llm_calls": 6,
+    "input_tokens": 7974,
+    "output_tokens": 499,
+    "latency_s": 66.13,
+    "rate_limit_retries": 1,
+    "tool_use_failed_retries": 2
+  },
+  "tasks": [
+    {
+      "task": {
+        "id": "s01",
+        "request": "I'd like an Audi A1, 2018 or newer, manual, under 20,000 miles, up to \u00a313,000.",
+        "expected_constraints": {
+          "model": "A1",
+          "year_min": 2018,
+          "year_max": null,
+          "price_max": 13000,
+          "mileage_max": 20000,
+          "transmission": "Manual",
+          "fuel_type": null
+        },
+        "expected_outcome": "match",
+        "expected_relaxed": null,
+        "expected_tools": [
+          "search_listings",
+          "submit_answer"
+        ],
+        "broker_notes": "SMOKE TASK, invented by Claude Code to check the pipeline; not gold. 4 real listings fit."
+      },
+      "run": {
+        "outcome": "match",
+        "listing_ids": [
+          "L00703",
+          "L07844",
+          "L09219",
+          "L01083"
+        ],
+        "relaxed_constraint": null,
+        "final_message": "Here are four Audi A1s from 2018 or newer that meet all your criteria (manual, under 20,000 miles, up to \u00a313,000).",
+        "in_graph_false_fit": false,
+        "returned_listings": [
+          {
+            "listing_id": "L00703",
+            "model": "A1",
+            "year": 2018,
+            "price": 12500,
+            "transmission": "Manual",
+            "mileage": 18120,
+            "fuel_type": "Petrol",
+            "engine_size": 1.4,
+            "mpg": 57.7,
+            "tax": 145
+          },
+          {
+            "listing_id": "L07844",
+            "model": "A1",
+            "year": 2018,
+            "price": 12950,
+            "transmission": "Manual",
+            "mileage": 19500,
+            "fuel_type": "Petrol",
+            "engine_size": 1.4,
+            "mpg": 57.7,
+            "tax": 150
+          },
+          {
+            "listing_id": "L09219",
+            "model": "A1",
+            "year": 2018,
+            "price": 12980,
+            "transmission": "Manual",
+            "mileage": 9807,
+            "fuel_type": "Petrol",
+            "engine_size": 1.0,
+            "mpg": 67.3,
+            "tax": 145
+          },
+          {
+            "listing_id": "L01083",
+            "model": "A1",
+            "year": 2018,
+            "price": 12996,
+            "transmission": "Manual",
+            "mileage": 18876,
+            "fuel_type": "Petrol",
+            "engine_size": 1.4,
+            "mpg": 55.4,
+            "tax": 145
+          }
+        ],
+        "trace": [
+          {
+            "name": "search_listings",
+            "args": {
+              "mileage_max": 20000,
+              "model": "A1",
+              "price_max": 13000,
+              "transmission": "Manual",
+              "year_min": 2018
+            },
+            "status": "success",
+            "result": "{\"constraints_applied\": {\"model\": \"A1\", \"year_min\": 2018, \"price_max\": 13000, \"mileage_max\": 20000, \"transmission\": \"Manual\"}, \"matching_count\": 4, \"listings\": [{\"listing_id\": \"L00703\", \"model\": \"A1\", \"year\": 2018, \"price\": 12500, \"transmission\": \"Manual\", \"mileage\": 18120, \"fuel_type\": \"Petrol\", \"engine_size\": 1.4, \"mpg\": 57.7, \"tax\": 145}, {\"listing_id\": \"L07844\", \"model\": \"A1\", \"year\": 2018, \"price\": 12950, \"transmission\": \"Manual\", \"mileage\": 19500, \"fuel_type\": \"Petrol\", \"engine_size\": 1.4, \"mpg\": 57.7, \"tax\": 150}, {\"listing_id\": \"L09219\", \"model\": \"A1\", \"year\": 2018, \"price\": 12980, \"transmission\": \"Manual\", \"mileage\": 9807, \"fuel_type\": \"Petrol\", \"engine_size\": 1.0, \"mpg\": 67.3, \"tax\": 145}, {\"listing_id\": \"L01083\", \"model\": \"A1\", \"year\": 2018, \"price\": 12996, \"transmission\": \"Manual\", \"mileage\": 18876, \"fuel_type\": \"Petrol\", \"engine_size\": 1.4, \"mpg\": 55.4, \"tax\": 145}]}"
+          },
+          {
+            "name": "submit_answer",
+            "args": {
+              "listing_ids": [
+                "L00703",
+                "L07844",
+                "L09219",
+                "L01083"
+              ],
+              "message": "Here are four Audi A1s from 2018 or newer that meet all your criteria (manual, under 20,000 miles, up to \u00a313,000).",
+              "outcome": "match"
+            },
+            "status": "success",
+            "result": "{\"status\": \"submitted\", \"outcome\": \"match\"}"
+          }
+        ],
+        "error": null,
+        "latency_s": 1.098,
+        "llm_calls": 2,
+        "input_tokens": 2815,
+        "output_tokens": 196,
+        "retries": 0,
+        "tool_use_failed_retries": 0,
+        "waited_s": 0.0,
+        "llm_s": 1.082
+      },
+      "scores": {
+        "id": "s01",
+        "expected_outcome": "match",
+        "outcome": "match",
+        "outcome_correct": true,
+        "tools_correct": true,
+        "tools_called": [
+          "search_listings",
+          "submit_answer"
+        ],
+        "constraints_correct": true,
+        "relaxed_correct": null,
+        "false_fit": false,
+        "false_fit_details": {},
+        "relaxed_extra_violation": false,
+        "gave_up": false,
+        "error": null,
+        "llm_calls": 2,
+        "input_tokens": 2815,
+        "output_tokens": 196,
+        "latency_s": 1.098,
+        "rate_limit_retries": 0,
+        "tool_use_failed_retries": 0
+      }
+    },
+    {
+      "task": {
+        "id": "s02",
+        "request": "Audi A3, 2019 or newer, manual, under 10k miles, max budget \u00a315,000.",
+        "expected_constraints": {
+          "model": "A3",
+          "year_min": 2019,
+          "year_max": null,
+          "price_max": 15000,
+          "mileage_max": 10000,
+          "transmission": "Manual",
+          "fuel_type": null
+        },
+        "expected_outcome": "relaxed_match",
+        "expected_relaxed": "price_max",
+        "expected_tools": [
+          "search_listings",
+          "market_summary",
+          "submit_answer"
+        ],
+        "broker_notes": "SMOKE TASK, invented by Claude Code; not gold. Nothing fits; relaxing price alone finds cars from \u00a315,700 (4.7% over). Expectation assumes the placeholder relaxation rule."
+      },
+      "run": {
+        "outcome": null,
+        "listing_ids": [],
+        "relaxed_constraint": null,
+        "final_message": null,
+        "in_graph_false_fit": null,
+        "returned_listings": [],
+        "trace": [
+          {
+            "name": "search_listings",
+            "args": {
+              "mileage_max": 10000,
+              "model": "A3",
+              "price_max": 15000,
+              "transmission": "Manual",
+              "year_min": 2019
+            },
+            "status": "success",
+            "result": "{\"constraints_applied\": {\"model\": \"A3\", \"year_min\": 2019, \"price_max\": 15000, \"mileage_max\": 10000, \"transmission\": \"Manual\"}, \"matching_count\": 0, \"listings\": []}"
+          },
+          {
+            "name": "market_summary",
+            "args": {
+              "model": "A3",
+              "year_min": 2019
+            },
+            "status": "success",
+            "result": "{\"model\": \"A3\", \"year_min\": 2019, \"year_max\": null, \"count\": 571, \"price\": {\"min\": 15470, \"median\": 22850, \"max\": 35995}, \"mileage\": {\"min\": 5, \"median\": 5505, \"max\": 21274}, \"transmission_counts\": {\"Semi-Auto\": 231, \"Manual\": 207, \"Automatic\": 133}, \"fuel_counts\": {\"Petrol\": 319, \"Diesel\": 250, \"Hybrid\": 2}, \"model_years_available\": [1998, 2020]}"
+          },
+          {
+            "name": "search_listings",
+            "args": {
+              "mileage_max": 10000,
+              "model": "A3",
+              "price_max": 16000,
+              "transmission": "Manual",
+              "year_min": 2019
+            },
+            "status": "success",
+            "result": "{\"constraints_applied\": {\"model\": \"A3\", \"year_min\": 2019, \"price_max\": 16000, \"mileage_max\": 10000, \"transmission\": \"Manual\"}, \"matching_count\": 3, \"listings\": [{\"listing_id\": \"L00045\", \"model\": \"A3\", \"year\": 2019, \"price\": 15700, \"transmission\": \"Manual\", \"mileage\": 2029, \"fuel_type\": \"Petrol\", \"engine_size\": 1.0, \"mpg\": 49.6, \"tax\": 145}, {\"listing_id\": \"L07562\", \"model\": \"A3\", \"year\": 2019, \"price\": 15850, \"transmission\": \"Manual\", \"mileage\": 9597, \"fuel_type\": \"Petrol\", \"engine_size\": 1.0, \"mpg\": 48.7, \"tax\": 150}, {\"listing_id\": \"L00074\", \"model\": \"A3\", \"year\": 2019, \"price\": 16000, \"transmission\": \"Manual\", \"mileage\": 5704, \"fuel_type\": \"Petrol\", \"engine_size\": 1.0, \"mpg\": 49.6, \"tax\": 145}]}"
+          }
+        ],
+        "error": "BadRequestError('Error code: 400 - {\\'error\\': {\\'message\\': \"Tool call validation failed: tool call validation failed: attempted to call tool \\'commentary\\' which was not in request.tools\", \\'type\\': \\'invalid_request_error\\', \\'code\\': \\'tool_use_failed\\', \\'failed_generation\\': \\'{\"name\": \"commentary\", \"arguments\": {\\\\n  \"listing_ids\": [\"L00045\", \"L07562\", \"L00074\"],\\\\n  \"message\": \"I couldn\\\\\\'t find any 2019+ Audi A3s under \u00a315,000, but by extending the budget slightly to \u00a316,000 you get th",
+        "latency_s": 61.632,
+        "llm_calls": 3,
+        "input_tokens": 3982,
+        "output_tokens": 256,
+        "retries": 0,
+        "tool_use_failed_retries": 2,
+        "waited_s": 58.694,
+        "llm_s": 1.324
+      },
+      "scores": {
+        "id": "s02",
+        "expected_outcome": "relaxed_match",
+        "outcome": null,
+        "outcome_correct": false,
+        "tools_correct": false,
+        "tools_called": [
+          "market_summary",
+          "search_listings"
+        ],
+        "constraints_correct": true,
+        "relaxed_correct": false,
+        "false_fit": false,
+        "false_fit_details": {},
+        "relaxed_extra_violation": false,
+        "gave_up": false,
+        "error": "BadRequestError('Error code: 400 - {\\'error\\': {\\'message\\': \"Tool call validation failed: tool call validation failed: attempted to call tool \\'commentary\\' which was not in request.tools\", \\'type\\': \\'invalid_request_error\\', \\'code\\': \\'tool_use_failed\\', \\'failed_generation\\': \\'{\"name\": \"commentary\", \"arguments\": {\\\\n  \"listing_ids\": [\"L00045\", \"L07562\", \"L00074\"],\\\\n  \"message\": \"I couldn\\\\\\'t find any 2019+ Audi A3s under \u00a315,000, but by extending the budget slightly to \u00a316,000 you get th",
+        "llm_calls": 3,
+        "input_tokens": 3982,
+        "output_tokens": 256,
+        "latency_s": 61.632,
+        "rate_limit_retries": 0,
+        "tool_use_failed_retries": 2
+      }
+    },
+    {
+      "task": {
+        "id": "s03",
+        "request": "I need a reliable family car that isn't too expensive.",
+        "expected_constraints": null,
+        "expected_outcome": "ask_customer",
+        "expected_relaxed": null,
+        "expected_tools": [
+          "ask_customer"
+        ],
+        "broker_notes": "SMOKE TASK, invented by Claude Code; not gold. No model, no budget number."
+      },
+      "run": {
+        "outcome": "ask_customer",
+        "listing_ids": [],
+        "relaxed_constraint": null,
+        "final_message": "Which Audi model and budget range are you looking for?",
+        "in_graph_false_fit": null,
+        "returned_listings": [],
+        "trace": [
+          {
+            "name": "ask_customer",
+            "args": {
+              "question": "Which Audi model and budget range are you looking for?"
+            },
+            "status": "success",
+            "result": "{\"status\": \"asked\", \"question\": \"Which Audi model and budget range are you looking for?\"}"
+          }
+        ],
+        "error": null,
+        "latency_s": 3.402,
+        "llm_calls": 1,
+        "input_tokens": 1177,
+        "output_tokens": 47,
+        "retries": 1,
+        "tool_use_failed_retries": 0,
+        "waited_s": 0.0,
+        "llm_s": 0.363
+      },
+      "scores": {
+        "id": "s03",
+        "expected_outcome": "ask_customer",
+        "outcome": "ask_customer",
+        "outcome_correct": true,
+        "tools_correct": true,
+        "tools_called": [
+          "ask_customer"
+        ],
+        "constraints_correct": null,
+        "relaxed_correct": null,
+        "false_fit": false,
+        "false_fit_details": {},
+        "relaxed_extra_violation": false,
+        "gave_up": false,
+        "error": null,
+        "llm_calls": 1,
+        "input_tokens": 1177,
+        "output_tokens": 47,
+        "latency_s": 3.402,
+        "rate_limit_retries": 1,
+        "tool_use_failed_retries": 0
+      }
+    }
+  ]
+}

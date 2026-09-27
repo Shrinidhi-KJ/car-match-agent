@@ -207,6 +207,7 @@ def test_malformed_tool_call_is_retried_and_counted(tmp_path):
     caller.start_task("t")
     assert caller(Flaky(1, exc=ToolUseFailed), [HumanMessage("hi")]).content == "ok"
     assert caller.stats["tool_use_failed_retries"] == 1
+    assert caller.pacer.used() > 55  # the failed attempt's estimate counts toward the window, not just the reply
     events = [json.loads(line)["event"] for line in (tmp_path / "log.jsonl").read_text().splitlines()]
     assert events == ["llm_retry_tool_use_failed", "llm_call"]
     with pytest.raises(ToolUseFailed):  # gives up after the retry limit
