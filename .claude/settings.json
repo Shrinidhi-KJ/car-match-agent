@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "deny": [
+      "Edit(eval/gold/**)",
+      "Write(eval/gold/**)",
+      "Read(eval/gold/test.jsonl)",
+      "Read(.env)"
+    ]
+  }
+}

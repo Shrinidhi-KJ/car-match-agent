@@ -1,0 +1,8 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Kaggle CSV: licence is CC0, but PLAN.md Phase 0 says do not commit it until Shrinidhi decides
+data/raw/*.csv
