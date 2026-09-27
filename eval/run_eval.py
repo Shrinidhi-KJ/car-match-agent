@@ -308,6 +308,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out-dir", type=Path, default=RESULTS_DIR)
     parser.add_argument("--budget", type=int, default=PACING_BUDGET, help="tokens per rolling minute")
     args = parser.parse_args(argv)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")  # Windows consoles can't encode every character
 
     if args.split:
         if args.split == "test":

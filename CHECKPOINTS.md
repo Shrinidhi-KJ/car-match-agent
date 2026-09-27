@@ -68,3 +68,16 @@ Removed the three unused worktrees (`../cm-tools`, `../cm-graph`, `../cm-eval`) 
 - The frozen-hash check and the run-once rule for the test split are enforced in code.
 
 **Failures:** none in this step. I didn't open or create anything under `eval/gold/`; the guard tests use a temporary directory.
+
+---
+
+## Step 4: integration test
+
+**Built:** `tests/test_integration.py`, marked `slow` and skipped if `GROQ_API_KEY` is unset. It runs one real agent run on the real Audi data with a request written in the test file ("2019 or newer Audi Q3, automatic, under 30,000 miles, budget £25,000"; 3 real listings fit). It checks the pipeline, not answer quality: the LLM call count is within the cap, the outcome is valid, a search happened, and the parsed model is Q3.
+
+**What happened:** the slow test ran **three times**, not once.
+- Run 1: the agent worked (search, then submit `match` with 3 IDs), but the test crashed in its own `print`. The Windows console (cp1252) can't encode the non-breaking hyphen (U+2011) the model wrote in its message.
+- Run 2: my first fix script failed its own match check, and because I'd chained the commands without `&&`, pytest reran with the old code and hit the same crash. My mistake.
+- Run 3 (after fixing the print with `ascii()`): **passed.** 2 LLM calls. The first search's args were `{model: Q3, year_min: 2019, transmission: Automatic, mileage_max: 30000, price_max: 25000}`; then `submit_answer` with `match` and `L08494, L08499, L07328`.
+
+**Also fixed:** `run_eval.py` now reconfigures stdout with `errors="replace"`, so the same console problem can't crash an eval run while it prints its summary. The results files are written as UTF-8 regardless.
