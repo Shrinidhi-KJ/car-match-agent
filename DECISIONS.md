@@ -144,3 +144,20 @@ Built around the query A3 / year_min 2018 / Automatic / mileage_max 40000 / pric
 - **`market_summary` returns** count, price and mileage min/median/max, counts by transmission and fuel, and the year range that model exists in at all (`model_years_available`), which helps when the requested range is empty. Both tools add a `note` listing the known models when the model code is unknown.
 - **Tool outputs are JSON strings**, so the ToolMessage content is exactly what's logged.
 - **Tool descriptions** (what the LLM reads) are module constants in `tools.py`: `SEARCH_DESCRIPTION` etc.
+
+---
+
+## Lane B: graph, LLM factory (2026-09-27)
+
+- **Graph shape:** nodes `agent`, `tools` (prebuilt `ToolNode`), `record`, `nudge`, `gave_up`. The routers are hand-written; `tools_condition` is too simple because it knows nothing about terminal tools or the cap. See CHECKPOINTS.md for the node-by-node explanation.
+- **Step cap counted in state** (`llm_calls`, +1 per agent node), not via LangGraph's `recursion_limit`. Why: the cap is on LLM calls, and hitting it must record `gave_up`, not raise `GraphRecursionError`.
+- **A terminal tool ends the run only if it succeeded.** A `submit_answer` rejected for bad arguments (validation or unknown IDs) returns an error ToolMessage and the agent gets another turn within the cap. Rejected: ending on any terminal *call*, which would record answers the tool refused.
+- **Parallel tool calls are allowed.** If one AI message contains several calls, `record` processes them in order and stops at the first successful terminal one. Rejected: `parallel_tool_calls=False`, a provider-specific flag that the fake model can't exercise.
+- **Text-only replies:** routed to `nudge`, which appends a clearly labelled "[Note from the system, not the customer]" HumanMessage and returns to `agent`. Every such turn counts toward the cap. Rejected: treating a text reply as immediate `gave_up` (too harsh for one slip); a mid-conversation SystemMessage (not all providers accept one).
+- **`original_constraints` = the arguments of the first *successful* `search_listings` call.** The in-graph false-fit check runs only when outcome is `match` and a search happened. With no search, `false_fit` stays None. The eval scorer checks against the gold `expected_constraints` instead (see Lane C).
+- **`build_graph(llm, *, listings=None, llm_caller=None)`:** `listings` defaults to the real data (tests pass `mini.csv`). `llm_caller(runnable, messages)` is a hook so the eval harness can add pacing, 429 retries and logging without the graph knowing about them.
+- **`prompt_fingerprint`** is a sha256 of the system prompt plus every tool's name, description and argument schema, attached to the compiled graph. The harness records it in every results file, so "nothing changed after the test run" can be verified.
+- **Relaxation policy is a marked placeholder** (`graph.RELAXATION_POLICY`, starting `[PLACEHOLDER - relaxation policy not yet supplied.]`). It carries an interim sentence ("loosen at most one constraint, and say which and by how much") so the smoke run can exercise the relaxed path. That sentence is not a broker policy.
+- **Vagueness rule in the prompt:** ask when there's "no model and no concrete requirement such as budget, year, mileage or gearbox". This is my wording; the gold "too vague" tasks will show whether it matches Shrinidhi's judgement. Tune it on dev only.
+- **LLM factory `make_llm(provider=None, *, max_retries=2)`:** Groq `openai/gpt-oss-120b`, `temperature=0`, `reasoning_effort="low"`, `max_tokens=1024`. The 1,024 cap bounds output (and reasoning) tokens per call, which count toward Groq's 8k tokens/min. `CARMATCH_LLM=nim` selects the untested NIM fallback. It loads `.env` from the repo root.
+- **Fake model for tests:** `tests/fakes.py` `ScriptedChatModel(GenericFakeChatModel)` with a no-op `bind_tools`, plus `call()`/`say()` helpers that attach `usage_metadata`.
