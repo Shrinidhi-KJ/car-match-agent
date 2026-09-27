@@ -45,3 +45,26 @@ Removed the three unused worktrees (`../cm-tools`, `../cm-graph`, `../cm-eval`) 
 **Tests cover:** search then submit; empty search → market_summary → relaxed search → relaxed_match (with `original_constraints` = the first, tight search); ask_customer ending after 1 call; endless searching stopped at exactly 6 calls with `gave_up`; text-only replies nudged then stopped; nudge then recover; a terminal call on the 6th call still counting; a match containing a non-fitting listing flagged as false fit; an invalid submit not ending the run; an unknown ID rejected then retried; the `llm_caller` hook wrapping every call; the placeholder and honesty rule present in the prompt.
 
 **Failures:** none in this step.
+
+---
+
+## Step 3: Lane C, scoring, harness and CI
+
+**Built**
+- `eval/score.py`: pure `score_task`, `summarize`, `summary_markdown`, plus helpers.
+- `eval/run_eval.py`:
+  - `TokenPacer` keeps usage under a token budget per rolling minute.
+  - `EvalCaller` is the graph's `llm_caller`: it paces, retries 429s, logs, and counts tokens and latency per task.
+  - `EventLog` writes the JSON-lines log.
+  - Gold guards: `check_frozen` and `check_test_run_allowed`.
+  - `run_tasks`, `write_results`, and a CLI.
+- `.github/workflows/ci.yml`.
+- Tests: `test_score.py` (12 tests), `test_run_eval.py` (10 tests). **73 tests pass in total.**
+
+**Design choices:** see DECISIONS.md, section "Lane C". The important ones:
+- False fit is judged against the gold constraints.
+- Each metric's denominator counts only the tasks it applies to.
+- Pacing is by tokens, not requests, and 429 retries are logged.
+- The frozen-hash check and the run-once rule for the test split are enforced in code.
+
+**Failures:** none in this step. I didn't open or create anything under `eval/gold/`; the guard tests use a temporary directory.

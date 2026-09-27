@@ -25,6 +25,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]  # so tests can import eval.score / eval.run_eval
 markers = [
     "slow: calls a real LLM over the network; excluded from CI with -m 'not slow'",
 ]

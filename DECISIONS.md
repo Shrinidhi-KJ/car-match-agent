@@ -161,3 +161,25 @@ Built around the query A3 / year_min 2018 / Automatic / mileage_max 40000 / pric
 - **Vagueness rule in the prompt:** ask when there's "no model and no concrete requirement such as budget, year, mileage or gearbox". This is my wording; the gold "too vague" tasks will show whether it matches Shrinidhi's judgement. Tune it on dev only.
 - **LLM factory `make_llm(provider=None, *, max_retries=2)`:** Groq `openai/gpt-oss-120b`, `temperature=0`, `reasoning_effort="low"`, `max_tokens=1024`. The 1,024 cap bounds output (and reasoning) tokens per call, which count toward Groq's 8k tokens/min. `CARMATCH_LLM=nim` selects the untested NIM fallback. It loads `.env` from the repo root.
 - **Fake model for tests:** `tests/fakes.py` `ScriptedChatModel(GenericFakeChatModel)` with a no-op `bind_tools`, plus `call()`/`say()` helpers that attach `usage_metadata`.
+
+---
+
+## Lane C: scoring, harness, CI (2026-09-27)
+
+- **Scoring works on normalised constraints**, and a missing field equals an explicit null. An *extra* constraint the customer didn't state counts as wrong. Invalid arguments count as wrong. Only the *first* `search_listings` call is scored (PLAN.md section 4), whether or not it succeeded.
+- **Metrics that don't apply are None and excluded from the denominator.** Examples: constraint parsing on tasks with no expected search; relaxed-constraint correctness on tasks not expected to be `relaxed_match`. Every metric is reported as "k of n" with its own n. `gave_up` and harness errors (outcome None) never equal a gold outcome.
+- **False fit is judged against the gold `expected_constraints`**, not the agent's own parse. Why: if the agent drops a constraint when searching and then calls the results a match, that's exactly the failure to catch. Fallback when a task has no gold constraints: the agent's first search. The in-graph check (against the agent's parse) is kept in the results as `in_graph_false_fit`. Semi-Auto satisfies "Automatic" here too (same rule).
+- **Extra logged count, not a headline metric:** `relaxed_extra_violation`, a `relaxed_match` whose listings break a gold constraint *other than* the one named as relaxed.
+- **Pacing:** a sliding 60-second token window with a budget of 7,200 tokens/min (10% under Groq's 8,000). The estimate before each call is prompt characters ÷ 4 + 1,200 (system prompt and tool schemas) + 400 (expected output). After the call, actual usage replaces the estimate in the window. An underestimate is caught by the 429 retry. Rejected: LangChain's `InMemoryRateLimiter`, which limits requests, not tokens.
+- **429 retries in the harness, not the client:** the eval builds the LLM with `max_retries=0`. `EvalCaller` retries 429s up to 6 times with backoff: the `retry-after` header if present, else 2, 4, 8… up to 60 s. Every retry is logged. Other exceptions aren't retried. Why: the retries need to be visible in the logs and the tests.
+- **Structured logs:** a plain JSON-lines file per run (`EventLog`), with events `run_start`, `task_start`, `llm_call` (tokens, reasoning tokens, estimate, latency, wait, retries, tool names), `llm_retry_429`, `llm_error`, `tool_call` (name, args, status, result), `task_end`, `run_end`. Tool calls are written from the trace after each task. Rejected: Python `logging` with a JSON formatter (more setup for the same output, and no new dependencies allowed).
+- **A crash inside a task is recorded, not raised:** the task gets `error` and scores as wrong, and the run continues.
+- **Latency:** `latency_s` is task wall-clock *including* pacing waits. `llm_s` (time inside LLM calls) and `waited_s` are recorded separately, because pacing inflates wall-clock on the free tier.
+- **Guards for the gold set (code-level):**
+  - `--split dev|test` reads `eval/gold/<split>.jsonl` only if `eval/gold/FROZEN.md` exists and a line naming that file contains its current sha256.
+  - `--split test` also needs `--confirm-test-split` and refuses if any `eval/results/test_*.json` already exists.
+  - `--tasks` refuses paths under `eval/gold/`, so the hash check can't be bypassed.
+- **Every results file records** the model, reasoning effort, git commit and a dirty flag, the tasks file and its sha256, and the prompt fingerprint.
+- **Run as `python -m eval.run_eval`** from the repo root. Added `eval/__init__.py` and `pythonpath = ["."]` in the pytest config so tests import `eval.*`. `eval` isn't an installed package, which is deliberate because it's not part of the library.
+- **Added `tests/test_run_eval.py`** (not in the PLAN.md layout): pacing, retries, guards, and an end-to-end run with the scripted fake model on `mini.csv`.
+- **CI:** GitHub Actions on push and pull request, ubuntu-latest, Python 3.11, `pip install -e ".[dev]"`, `pytest -m "not slow"`. No secrets needed.
