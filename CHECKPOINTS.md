@@ -128,3 +128,16 @@ Removed the three unused worktrees (`../cm-tools`, `../cm-graph`, `../cm-eval`) 
 - Pushed `main`, `6944d92..c690249`, no force.
 - GitHub Actions run 36312384066 (`ci`, job `unit-tests`) **passed** in 28 s: install plus `pytest -m "not slow"` on ubuntu-latest, Python 3.11.
 - Two warnings from GitHub, neither a failure: `actions/checkout@v4` and `actions/setup-python@v5` target the deprecated Node 20; `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19.
+
+---
+
+# Malformed-tool-call diagnosis run (2026-09-27)
+
+## Step 1: re-run of the existing smoke set (`smoke_20260927-100056`, commit `9c314d8`, clean)
+
+Same three tasks as before. The harness fixes from the last run work as intended:
+- **Trace kept on failure:** s02 errored on its 4th call, and its partial trace (search_listings, market_summary, search_listings) is in the results. Constraint parsing scored 2 of 2.
+- **Retries counted:** s02 shows `tool_use_failed_retries: 2`. The summary table shows 2.
+- **Failed-attempt tokens in the rate window:** s03 waited 57 s before its call, and there were 0 HTTP 429 retries. The previous run, before this fix, had one 429 at the same point.
+
+The s02 outcome is unchanged: the malformed terminal call recurred on all 3 attempts. s01 `match`, s03 `ask_customer`. 6 successful LLM calls, 7,974 input and 498 output tokens, 121 s wall-clock (most of it pacing waits).
