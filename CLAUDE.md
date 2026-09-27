@@ -12,7 +12,7 @@ Read PLAN.md (the single source of truth) and DECISIONS.md before doing anything
 - Log every non-obvious choice in DECISIONS.md: what, why, what was rejected.
 - Report results as counts. Don't describe results as good, strong or accurate.
 - Don't push. Shrinidhi pushes after reviewing.
-- Stop at the CHECKPOINT and wait.
+- Write checkpoint reports to CHECKPOINTS.md.
 
 ## Practical notes
 
