@@ -243,4 +243,7 @@ How the columns are counted:
    We relaxed price to min. Provide relaxed_match.
    ```
 
-In all 6 provider-rejected attempts in A, the model was trying to submit the final answer; none were search or market_summary calls. In examples 1 and 2, the arguments would have passed our `submit_answer` schema if the tool name had been correct.
+I checked all 6 of A's provider-rejected attempts against the data:
+- **5** (`tool_use_failed`: s02 ×3, s05, s07) are complete `submit_answer` payloads under the tool name `json` or `commentary`. All 5 pass our `SubmitAnswerArgs` schema, and every listing ID in them exists.
+- **1** (`output_parse_failed`, s07) is plain text, not a tool payload.
+- None of the 6 were search or market_summary calls.
