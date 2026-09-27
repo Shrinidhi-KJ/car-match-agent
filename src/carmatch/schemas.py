@@ -4,14 +4,34 @@ Every lane imports from here, so field names in this file are the contract betwe
 data/tools (Lane A), the graph (Lane B), scoring (Lane C) and the hand-written gold set.
 """
 
-from typing import Annotated, Literal, TypedDict
+import re
+from typing import Annotated, Any, Literal, TypedDict
 
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 Transmission = Literal["Manual", "Automatic", "Semi-Auto"]
 FuelType = Literal["Petrol", "Diesel", "Hybrid"]
+TRANSMISSIONS: tuple[str, ...] = ("Manual", "Automatic", "Semi-Auto")
+FUEL_TYPES: tuple[str, ...] = ("Petrol", "Diesel", "Hybrid")
+
+
+def normalise_model(value: str) -> str:
+    """'Audi A3' / ' a3 ' / 'A-3' -> 'A3'. Model codes are compared in this form everywhere."""
+    code = re.sub(r"[^A-Z0-9]", "", value.upper())
+    return code.removeprefix("AUDI")
+
+
+def _match_choice(value: Any, choices: tuple[str, ...]) -> Any:
+    """Case- and punctuation-insensitive match onto an allowed value; unknown values pass through to fail validation."""
+    if not isinstance(value, str):
+        return value
+    key = re.sub(r"[^a-z]", "", value.lower())
+    for choice in choices:
+        if re.sub(r"[^a-z]", "", choice.lower()) == key:
+            return choice
+    return value
 
 # What the agent may submit via submit_answer.
 SubmitOutcome = Literal["match", "relaxed_match", "no_match"]
@@ -34,8 +54,30 @@ class Constraints(BaseModel):
     year_max: int | None = Field(None, description="Latest registration year, inclusive.")
     price_max: int | None = Field(None, description="Maximum price in GBP, inclusive.")
     mileage_max: int | None = Field(None, description="Maximum mileage in miles, inclusive.")
-    transmission: Transmission | None = None
+    transmission: Transmission | None = Field(
+        None,
+        description="'Automatic' for any automatic request (also matches Semi-Auto listings); 'Manual' for manual.",
+    )
     fuel_type: FuelType | None = None
+
+    @field_validator("model", mode="before")
+    @classmethod
+    def _normalise_model(cls, v: Any) -> Any:
+        return normalise_model(v) if isinstance(v, str) else v
+
+    @field_validator("transmission", mode="before")
+    @classmethod
+    def _normalise_transmission(cls, v: Any) -> Any:
+        return _match_choice(v, TRANSMISSIONS)
+
+    @field_validator("fuel_type", mode="before")
+    @classmethod
+    def _normalise_fuel(cls, v: Any) -> Any:
+        return _match_choice(v, FUEL_TYPES)
+
+    def active(self) -> dict[str, Any]:
+        """Only the constraints that are set."""
+        return self.model_dump(exclude_none=True)
 
 
 ConstraintName = Literal[
@@ -61,25 +103,52 @@ class Listing(BaseModel):
 # ---- Tool argument schemas (Lane A's tools and Lane B's stubs both use these) ----
 
 
-class SearchListingsArgs(BaseModel):
-    constraints: Constraints
+# search_listings takes the constraint fields as flat arguments (see DECISIONS.md, Lane A).
+SearchListingsArgs = Constraints
 
 
 class MarketSummaryArgs(BaseModel):
-    model: str
-    year_min: int | None = None
-    year_max: int | None = None
+    model: str = Field(description="Audi model code, e.g. 'A3'.")
+    year_min: int | None = Field(None, description="Earliest registration year, inclusive.")
+    year_max: int | None = Field(None, description="Latest registration year, inclusive.")
+
+    @field_validator("model", mode="before")
+    @classmethod
+    def _normalise_model(cls, v: Any) -> Any:
+        return normalise_model(v) if isinstance(v, str) else v
 
 
 class AskCustomerArgs(BaseModel):
-    question: str
+    question: str = Field(description="One short clarifying question for the customer.")
 
 
 class SubmitAnswerArgs(BaseModel):
-    outcome: SubmitOutcome
-    listing_ids: list[str] = Field(default_factory=list, max_length=5)
-    relaxed_constraint: ConstraintName | None = None
-    message: str
+    outcome: SubmitOutcome = Field(
+        description="'match': every listing meets every request constraint. "
+        "'relaxed_match': listings meet all constraints except exactly one, named in relaxed_constraint. "
+        "'no_match': nothing suitable, even with one constraint relaxed."
+    )
+    listing_ids: list[str] = Field(
+        default_factory=list,
+        max_length=5,
+        description="IDs copied exactly from search_listings results, best first. Empty for no_match.",
+    )
+    relaxed_constraint: ConstraintName | None = Field(
+        None, description="Required for relaxed_match (the one constraint loosened); null otherwise."
+    )
+    message: str = Field(description="Short message to the customer explaining the answer.")
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "SubmitAnswerArgs":
+        if self.outcome == "relaxed_match" and self.relaxed_constraint is None:
+            raise ValueError("relaxed_match requires relaxed_constraint")
+        if self.outcome != "relaxed_match" and self.relaxed_constraint is not None:
+            raise ValueError("relaxed_constraint must be null unless outcome is relaxed_match")
+        if self.outcome in ("match", "relaxed_match") and not self.listing_ids:
+            raise ValueError(f"{self.outcome} requires at least one listing_id")
+        if self.outcome == "no_match" and self.listing_ids:
+            raise ValueError("no_match must have no listing_ids")
+        return self
 
 
 # ---- Graph state ----
@@ -95,6 +164,8 @@ class AgentState(TypedDict, total=False):
     listing_ids: list[str]
     relaxed_constraint: ConstraintName | None
     final_message: str | None  # submit_answer message or ask_customer question
+    false_fit: bool | None  # set when outcome is match: True if a listing breaks original_constraints
+    false_fit_details: dict[str, list[str]]  # listing_id -> violated constraint names
 
 
 # ---- Gold set (PLAN.md section 3) ----

@@ -128,3 +128,19 @@ Built around the query A3 / year_min 2018 / Automatic / mileage_max 40000 / pric
 
 ### `ask_customer` is a run outcome
 - **Decision:** added to the outcome values in PLAN.md section 1 and to outcome scoring in section 4. Vague gold tasks use `expected_outcome: "ask_customer"`. Already present in `schemas.RunOutcome`.
+
+---
+
+## Lane A: data, tools, checker (2026-09-27, continuous-mode run)
+
+- **Listing IDs = row position in the raw file** (`L00000` = first data row), assigned *before* dropping duplicates, keeping the first copy. Why: stable and readable, and dropping a duplicate never shifts another listing's ID. Rejected: content hashes (unreadable, and identical rows collide); renumbering after de-duplication (IDs would change if the cleaning rule changed).
+- **Loader fails loudly** on missing columns or on transmission/fuel values outside the schema, rather than silently dropping rows.
+- **`search_listings` takes the constraint fields as flat arguments** (`args_schema = Constraints`), not a nested `constraints` object. Why: flat arguments are easier for the LLM to fill, and the tool-call args compare directly with gold `expected_constraints`. Rejected: nested `{"constraints": {...}}` as literally written in PLAN.md section 1.
+- **Normalisation lives in the `Constraints` validators:** model `"Audi A3"` / `" a3"` → `"A3"`; transmission and fuel type match case-insensitively (`"automatic"` → `"Automatic"`). Consequence for scoring: constraint parsing is compared *after* normalisation, so `"Audi A3"` counts as `"A3"`. Why: the search behaves identically, so the metric should measure understanding, not string formatting. Rejected: strict raw-string comparison.
+- **Ranking tie-break:** price asc, mileage asc, then listing_id asc, so ties are fully deterministic.
+- **The checker is a separate row-wise implementation** of the same rules (inclusive limits, Automatic ⊇ Semi-Auto). A test cross-checks it against the pandas filter on every fixture row for 768 constraint combinations. Why: if search and checker shared one function, a bug in it would hide false fits. `accepted_transmissions()` is the one shared piece; it's a single-line rule.
+- **An unknown listing ID in a `match` counts as a false fit** (reported as `unknown_listing`).
+- **`submit_answer` validates consistency:** `relaxed_match` needs `relaxed_constraint`; others must not have one; `match`/`relaxed_match` need ≥1 ID; `no_match` needs none. Unknown IDs raise `ToolException`. Tools use `handle_tool_error=True`, so the model gets an error message and can retry within the step cap instead of the run crashing. The trace records the error. Rejected: accepting anything and relying only on scoring, which would let malformed answers end runs.
+- **`market_summary` returns** count, price and mileage min/median/max, counts by transmission and fuel, and the year range that model exists in at all (`model_years_available`), which helps when the requested range is empty. Both tools add a `note` listing the known models when the model code is unknown.
+- **Tool outputs are JSON strings**, so the ToolMessage content is exactly what's logged.
+- **Tool descriptions** (what the LLM reads) are module constants in `tools.py`: `SEARCH_DESCRIPTION` etc.
