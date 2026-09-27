@@ -97,6 +97,8 @@ def score_task(task: dict, run: dict) -> dict[str, Any]:
         "input_tokens": run.get("input_tokens", 0),
         "output_tokens": run.get("output_tokens", 0),
         "latency_s": run.get("latency_s", 0.0),
+        "rate_limit_retries": run.get("retries", 0),
+        "tool_use_failed_retries": run.get("tool_use_failed_retries", 0),
     }
 
 
@@ -113,6 +115,8 @@ def summarize(scores: list[dict]) -> dict[str, Any]:
     summary["input_tokens"] = sum(s["input_tokens"] for s in scores)
     summary["output_tokens"] = sum(s["output_tokens"] for s in scores)
     summary["latency_s"] = round(sum(s["latency_s"] for s in scores), 2)
+    summary["rate_limit_retries"] = sum(s.get("rate_limit_retries", 0) for s in scores)
+    summary["tool_use_failed_retries"] = sum(s.get("tool_use_failed_retries", 0) for s in scores)
     return summary
 
 
@@ -135,6 +139,8 @@ def summary_markdown(summary: dict, scores: list[dict], title: str) -> str:
         f"| input tokens | {summary['input_tokens']} |",
         f"| output tokens | {summary['output_tokens']} |",
         f"| wall-clock seconds (incl. pacing waits) | {summary['latency_s']} |",
+        f"| HTTP 429 retries | {summary['rate_limit_retries']} |",
+        f"| malformed tool call retries (Groq tool_use_failed) | {summary['tool_use_failed_retries']} |",
         "",
         "| task | expected | got | tools | constraints | relaxed | false fit | calls | tokens in/out | s |",
         "|---|---|---|---|---|---|---|---|---|---|",

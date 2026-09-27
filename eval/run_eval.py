@@ -38,6 +38,7 @@ PACING_BUDGET = 7200  # stay 10% under the Groq free-tier limit
 TOOL_SCHEMA_OVERHEAD = 1200  # rough prompt tokens for system prompt + four tool schemas
 EXPECTED_OUTPUT = 400
 MAX_429_RETRIES = 6
+MAX_TOOL_USE_FAILED_RETRIES = 2
 
 
 # ---------------------------------------------------------------- logging
@@ -106,6 +107,11 @@ def is_rate_limit(exc: Exception) -> bool:
     return getattr(exc, "status_code", None) == 429 or type(exc).__name__ == "RateLimitError"
 
 
+def is_tool_use_failed(exc: Exception) -> bool:
+    """Groq 400 when the model's tool call can't be parsed (e.g. gpt-oss naming a tool "json")."""
+    return getattr(exc, "status_code", None) == 400 and "tool_use_failed" in str(exc)
+
+
 def retry_after_s(exc: Exception) -> float | None:
     response = getattr(exc, "response", None)
     value = getattr(response, "headers", {}).get("retry-after") if response is not None else None
@@ -126,31 +132,43 @@ class EvalCaller:
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.perf_counter,
         max_retries: int = MAX_429_RETRIES,
+        max_tool_use_failed_retries: int = MAX_TOOL_USE_FAILED_RETRIES,
     ):
         self.pacer, self.log, self.sleep, self.clock, self.max_retries = pacer, log, sleep, clock, max_retries
+        self.max_tool_use_failed_retries = max_tool_use_failed_retries
         self.start_task("")
 
     def start_task(self, task_id: str) -> None:
         self.task_id = task_id
-        self.stats = {"llm_calls": 0, "input_tokens": 0, "output_tokens": 0, "retries": 0, "waited_s": 0.0, "llm_s": 0.0}
+        self.stats = {"llm_calls": 0, "input_tokens": 0, "output_tokens": 0, "retries": 0,
+                      "tool_use_failed_retries": 0, "waited_s": 0.0, "llm_s": 0.0}
 
     def __call__(self, runnable, messages: list[BaseMessage]) -> AIMessage:
         estimate = estimate_tokens(messages)
         waited = self.pacer.wait(estimate)
         self.stats["waited_s"] += waited
-        for attempt in range(self.max_retries + 1):
+        rate_limited = tool_failed = 0
+        while True:
             t0 = self.clock()
             try:
                 reply = runnable.invoke(messages)
             except Exception as exc:
-                if not is_rate_limit(exc) or attempt == self.max_retries:
-                    self.log.write("llm_error", task_id=self.task_id, error=repr(exc)[:500], attempt=attempt)
-                    raise
-                backoff = retry_after_s(exc) or min(2 ** attempt * 2, 60)
-                self.stats["retries"] += 1
-                self.log.write("llm_retry_429", task_id=self.task_id, attempt=attempt, backoff_s=backoff)
-                self.sleep(backoff)
-                continue
+                if is_rate_limit(exc) and rate_limited < self.max_retries:
+                    backoff = retry_after_s(exc) or min(2 ** rate_limited * 2, 60)
+                    rate_limited += 1
+                    self.stats["retries"] += 1
+                    self.log.write("llm_retry_429", task_id=self.task_id, attempt=rate_limited, backoff_s=backoff)
+                    self.sleep(backoff)
+                    continue
+                if is_tool_use_failed(exc) and tool_failed < self.max_tool_use_failed_retries:
+                    tool_failed += 1
+                    self.stats["tool_use_failed_retries"] += 1
+                    self.log.write("llm_retry_tool_use_failed", task_id=self.task_id, attempt=tool_failed,
+                                   error=repr(exc)[:500])
+                    continue
+                self.log.write("llm_error", task_id=self.task_id, error=repr(exc)[:500],
+                               rate_limit_retries=rate_limited, tool_use_failed_retries=tool_failed)
+                raise
             latency = self.clock() - t0
             usage = reply.usage_metadata or {}
             tokens_in, tokens_out = usage.get("input_tokens", 0), usage.get("output_tokens", 0)
@@ -169,11 +187,11 @@ class EvalCaller:
                 estimate=estimate,
                 latency_s=round(latency, 3),
                 waited_s=round(waited, 3),
-                retries=attempt,
+                retries=rate_limited,
+                tool_use_failed_retries=tool_failed,
                 tool_calls=[tc["name"] for tc in reply.tool_calls],
             )
             return reply
-        raise AssertionError("unreachable")
 
 
 # ---------------------------------------------------------------- gold-set guards
@@ -253,7 +271,11 @@ def run_tasks(tasks: list[dict], graph, caller: EvalCaller, log: EventLog, *, cl
         t0 = clock()
         state, error = None, None
         try:
-            state = graph.invoke(initial_state(task["request"]))
+            # stream() rather than invoke() so the last good state (and its trace) survives an exception.
+            for state in graph.stream(initial_state(task["request"]), stream_mode="values"):
+                pass
+            if state is not None and state.get("outcome") is None:
+                error = "graph ended without an outcome"
         except Exception as exc:  # recorded as a failed task, not a crashed eval
             error = repr(exc)[:500]
         latency = clock() - t0

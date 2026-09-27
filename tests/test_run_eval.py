@@ -192,3 +192,36 @@ def test_graph_exception_is_recorded_not_raised(tmp_path, mini_df):
     [record] = run_tasks(load_tasks(tasks_file), graph, caller, EventLog(None))
     assert record["run"]["error"]
     assert record["scores"]["outcome_correct"] is False
+
+
+class ToolUseFailed(Exception):
+    status_code = 400
+
+    def __str__(self):
+        return "Error code: 400 - {'error': {'code': 'tool_use_failed'}}"
+
+
+def test_malformed_tool_call_is_retried_and_counted(tmp_path):
+    log = EventLog(tmp_path / "log.jsonl")
+    caller = EvalCaller(TokenPacer(10_000), log, sleep=lambda s: None)
+    caller.start_task("t")
+    assert caller(Flaky(1, exc=ToolUseFailed), [HumanMessage("hi")]).content == "ok"
+    assert caller.stats["tool_use_failed_retries"] == 1
+    events = [json.loads(line)["event"] for line in (tmp_path / "log.jsonl").read_text().splitlines()]
+    assert events == ["llm_retry_tool_use_failed", "llm_call"]
+    with pytest.raises(ToolUseFailed):  # gives up after the retry limit
+        caller(Flaky(10, exc=ToolUseFailed), [HumanMessage("hi")])
+
+
+def test_partial_trace_survives_a_mid_run_exception(tmp_path, mini_df):
+    tasks_file = tmp_path / "tasks.jsonl"
+    tasks_file.write_text(json.dumps(TASKS[0]) + "\n")
+    caller = EvalCaller(TokenPacer(10_000), EventLog(None), max_retries=0)
+    # One search, then the fake model runs out of messages and raises on the second call.
+    graph = build_graph(scripted([call("search_listings", TASKS[0]["expected_constraints"])]),
+                        listings=mini_df, llm_caller=caller)
+    [record] = run_tasks(load_tasks(tasks_file), graph, caller, EventLog(None))
+    assert record["run"]["error"]
+    assert [s["name"] for s in record["run"]["trace"]] == ["search_listings"]
+    assert record["scores"]["constraints_correct"] is True
+    assert record["scores"]["outcome_correct"] is False
