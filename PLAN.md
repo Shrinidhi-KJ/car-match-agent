@@ -19,19 +19,25 @@ This file is the single source of truth. Every Claude Code session reads it (and
 
 **Input:** a plain-English request, e.g. "a 2018 or newer Audi A3, automatic, under 40k miles, under £18,000".
 
-**Data:** Kaggle "100,000 UK Used Car Data set", Audi file only (`audi.csv`). Scraped around 2020, so no trims, colours, locations or dealers, and prices are ~2020 listings. Downloaded manually by Shrinidhi (Kaggle needs a login) into `data/raw/audi.csv`. Licence checked before anything is committed; if it doesn't allow redistribution, `data/raw/` is gitignored and the README explains how to download it.
+**Data:** Kaggle "100,000 UK Used Car Data set", Audi file only (`audi.csv`). Scraped around 2020, so no trims, colours, locations or dealers, and prices are ~2020 listings. Stored at `data/raw/audi.csv` and committed: the licence is CC0: Public Domain (see DECISIONS.md). Cleaning at load time drops exact duplicate rows (103 in the raw file) and logs how many were dropped.
 
 **Tools (the model chooses between these):**
 - `search_listings(constraints)`: deterministic filter and rank in pandas. Ranking rule: price ascending, then mileage ascending. Returns at most 5 listings with stable IDs. The LLM never ranks cars itself.
+
+**Matching rules (shared by `search_listings`, the false-fit checker and the gold set):**
+- All numeric limits are inclusive: a listing whose value equals the limit passes (`mileage_max: 40000` keeps a 40,000-mile car).
+- Transmission: a customer's "automatic" is passed by the LLM as `"Automatic"` and expanded in code to match Automatic OR Semi-Auto. `"Manual"` matches Manual only.
 - `market_summary(model, year_min, year_max)`: count of listings plus price and mileage spread for that model and year range. Used when a search comes back empty, to work out which constraint is blocking.
 - `ask_customer(question)`: terminal. Ends the run with a clarifying question.
 - `submit_answer(outcome, listing_ids, relaxed_constraint, message)`: terminal. `outcome` is one of `match`, `relaxed_match`, `no_match`.
 
 **Stopping conditions:** the run ends when a terminal tool is called, or when the step cap (6 LLM calls) is hit, in which case outcome is recorded as `gave_up`.
 
-**Honesty rule built into the code:** if the agent submits `match`, a deterministic check verifies every returned listing satisfies every original constraint. A violation is counted as a **false fit**, the key failure this project exists to catch.
+**Run outcomes:** `match`, `relaxed_match`, `no_match` (from `submit_answer`), `ask_customer` (the run ended with `ask_customer`), and `gave_up` (step cap hit). The agent can only submit the first three.
 
-**LLM:** Groq, `llama-3.3-70b-versatile` via `langchain-groq` (confirm it's still available in Phase 0). Fallback: NVIDIA NIM via `langchain-openai` with a custom `base_url`. Groq free tier is ~8,000 tokens per minute including output, so the eval harness paces requests and retries on 429.
+**Honesty rule built into the code:** if the agent submits `match`, a deterministic check verifies every returned listing satisfies every original constraint, using the same matching rules as `search_listings`. A violation is counted as a **false fit**, the key failure this project exists to catch.
+
+**LLM:** Groq, `openai/gpt-oss-120b` via `langchain-groq`, with `reasoning_effort="low"` (`llama-3.3-70b-versatile` was retired from Groq; see DECISIONS.md). Fallback: NVIDIA NIM via `langchain-openai` with a custom `base_url`, untested (no key yet). Groq free tier is ~8,000 tokens per minute including output, so the eval harness paces requests and retries on 429.
 
 **Out of scope today:** other manufacturers, live stock, funders, brokers, UI, cloud deploy. Stretch only after Phase 4: Langfuse tracing.
 
@@ -46,7 +52,7 @@ car-match-agent/
   DECISIONS.md              short log: decision, reason, alternative rejected
   pyproject.toml            deps + pytest config (slow marker)
   .env.example              GROQ_API_KEY=, NVIDIA_API_KEY=  (real .env gitignored)
-  data/raw/audi.csv         manual download, maybe gitignored
+  data/raw/audi.csv         Kaggle download, committed (CC0)
   src/carmatch/
     schemas.py              Pydantic: Constraints, Listing, Outcome, AgentState
     data.py                 load + clean CSV, assign stable listing IDs
@@ -90,6 +96,8 @@ One JSON object per line:
  "broker_notes": "why I'd handle it this way"}
 ```
 
+`expected_constraints` follows the matching rules in section 1: limits are inclusive ("under 40k miles" is `"mileage_max": 40000`), and "automatic" is written `"transmission": "Automatic"`. Tasks too vague to search have `"expected_outcome": "ask_customer"` and `"expected_tools": ["ask_customer"]`.
+
 Target mix across 20 tasks: roughly 8 clean matches, 6 needing one constraint relaxed, 3 where nothing is close, 3 too vague to search. Split: 5 into dev, 15 into test, with every category present in test.
 
 Decision Shrinidhi must make and write in `broker_notes` and DECISIONS.md: **the relaxation policy** (e.g. "relax mileage before year, never go more than 10% over budget"). The agent's system prompt states the same policy. This is your judgement as the broker, not Claude Code's.
@@ -99,7 +107,7 @@ Decision Shrinidhi must make and write in `broker_notes` and DECISIONS.md: **the
 ## 4. Scoring (all deterministic, in `eval/score.py`)
 
 Per task:
-- **Outcome correct:** final outcome equals `expected_outcome` (`gave_up` is always wrong).
+- **Outcome correct:** final outcome equals `expected_outcome`, one of `match`, `relaxed_match`, `no_match`, `ask_customer` (`gave_up` is always wrong).
 - **Tool selection correct:** set of tools called equals `expected_tools` (order ignored, repeats ignored).
 - **Constraint parsing correct:** arguments of the first `search_listings` call equal `expected_constraints` (only for tasks where a search is expected).
 - **Relaxed constraint correct:** for `relaxed_match`, the named constraint equals `expected_relaxed`.

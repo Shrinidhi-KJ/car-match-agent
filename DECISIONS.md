@@ -68,7 +68,7 @@ Built around the query A3 / year_min 2018 / Automatic / mileage_max 40000 / pric
 - Q8 exists only in 2019 to 2020, so Q8 2015 to 2018 has zero rows (for `market_summary` on an empty range).
 - 1 dirty row: A1 with mileage 3 and engineSize 0.0.
 
-### LLM: the planned model is gone (open decision for Shrinidhi)
+### LLM: the planned model is gone (resolved at CHECKPOINT 0: gpt-oss-120b)
 
 - `llama-3.3-70b-versatile` **no longer exists on Groq** (`model_not_found`, 404). Groq's current list: allam-2-7b, openai/gpt-oss-120b, openai/gpt-oss-20b, qwen/qwen3.8-27b, plus guard, TTS and whisper models.
 - Smoke test (`scripts/smoke_llm.py --model <id>`, one dummy tool):
@@ -86,9 +86,45 @@ Built around the query A3 / year_min 2018 / Automatic / mileage_max 40000 / pric
 - Added `scripts/smoke_llm.py` (not in the PLAN.md layout) to keep the smoke test runnable.
 - Nothing created under `eval/gold/` (Phase 1 is Shrinidhi's).
 
-### Open questions for Shrinidhi (broker decisions, not Claude Code's)
+### Open questions for Shrinidhi (broker decisions, not Claude Code's): all resolved at CHECKPOINT 0, see below
 
 1. Does "automatic" include `Semi-Auto`? It's 3,591 listings, more than `Automatic` itself. Options: map "automatic" to {Automatic, Semi-Auto}, or treat them as distinct and let the agent relax Automatic to Semi-Auto. The answer also shapes the relaxation policy and the gold `expected_constraints`.
 2. Duplicates: keep all 103 duplicate rows as separate listings, or drop them in cleaning?
 3. Which LLM replaces `llama-3.3-70b-versatile`?
 4. Commit `audi.csv` (CC0 allows it), or keep it gitignored and document the download?
+
+---
+
+## CHECKPOINT 0 decisions (Shrinidhi, 2026-09-27)
+
+### Transmission: "automatic" matches Automatic OR Semi-Auto
+- **Decision:** the LLM passes `transmission: "Automatic"` for any "automatic" request. `search_listings` and the false-fit checker expand it in code to {Automatic, Semi-Auto}. `"Manual"` matches Manual only. `"Semi-Auto"` stays a valid schema value, but the prompt doesn't steer the model toward it.
+- **Reason:** in UK listings, "Semi-Auto" is usually a dual-clutch gearbox with no clutch pedal, which is what a customer asking for an automatic wants. *This is inferred from domain knowledge, not verified from the data* (the dataset has no gearbox detail).
+- **Why expand in code, not in the LLM:** it's one deterministic rule shared by search, checker and scoring, and it doesn't depend on the model remembering it.
+- **Rejected:** treating Semi-Auto as distinct (it would hide 3,591 listings from "automatic" requests and make "relax to Semi-Auto" a routine relaxation); asking the LLM to pass a list of transmissions.
+
+### Duplicates: drop exact duplicate rows at load time
+- **Decision:** `data.py` drops exact duplicate rows (all 9 columns equal) before assigning listing IDs, and logs how many it dropped (103 expected on the raw file, 1 on `mini.csv`).
+- **Reason:** identical rows are almost certainly the same advert scraped twice. Keeping them would fill the 5-result list with copies.
+- **Rejected:** keeping duplicates as separate listings.
+
+### LLM: Groq `openai/gpt-oss-120b`, reasoning_effort low
+- **Decision:** the model is `openai/gpt-oss-120b` on Groq. It replaces `llama-3.3-70b-versatile`, which Groq has retired (404 `model_not_found`).
+- **reasoning_effort:** supported. `langchain-groq` 1.1.3 has a `reasoning_effort: str | None` field on `ChatGroq`. Set it as `ChatGroq(model="openai/gpt-oss-120b", temperature=0, reasoning_effort="low")`. Checked with a live call: the API accepted `"low"`, returned a correct tool call, and echoed `reasoning_effort: low` in `response_metadata`. On the one-line smoke prompt, reasoning tokens were 21 with or without the setting, so this call showed no effect. Lane B puts this in `llm.py`.
+- **Reason:** it's the strongest listed Groq model that returned a tool call in the smoke test, with the same 8,000 tokens/min free-tier limit PLAN.md paces for. Low effort keeps output tokens (which count toward the 8k/min) down.
+- **Rejected:** `openai/gpt-oss-20b` (weaker); `qwen/qwen3.8-27b` (1,000 output tokens/min free-tier cap).
+- **The NIM fallback (`meta/llama-3.3-70b-instruct` via `langchain-openai`) is untested:** `NVIDIA_API_KEY` is empty.
+- Side note: with the docstring "model code (e.g. 'A3')", the model passed `model: "A3"`. With a vaguer docstring it passed `"Audi A3"`. Lane A should still normalise it.
+
+### Commit `data/raw/audi.csv`
+- **Decision:** commit it; removed from `.gitignore`.
+- **Reason:** the licence is CC0: Public Domain (read on the Kaggle dataset page on 2026-09-27), and committing it makes the eval reproducible without a download.
+- **Rejected:** gitignoring it and documenting the download.
+
+### Numeric limits are inclusive
+- **Decision:** every numeric limit (`year_min`, `year_max`, `price_max`, `mileage_max`) passes a listing whose value equals the limit. The gold set, `search_listings` and the checker all use this rule. "Under £18,000" is written `price_max: 18000`.
+- **Reason:** one rule everywhere, with no off-by-one disagreements between the gold author, the tool and the checker.
+- **Rejected:** strict "under".
+
+### `ask_customer` is a run outcome
+- **Decision:** added to the outcome values in PLAN.md section 1 and to outcome scoring in section 4. Vague gold tasks use `expected_outcome: "ask_customer"`. Already present in `schemas.RunOutcome`.
