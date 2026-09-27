@@ -112,3 +112,11 @@ Removed the three unused worktrees (`../cm-tools`, `../cm-graph`, `../cm-eval`) 
 - (d) Accept a small prompt or description change motivated by a dev failure.
 
 **After this run:** the pacer now also counts the tokens used by failed generations. I didn't rerun the smoke set after that change.
+
+---
+
+## Steps 6 and 7: tests and README
+
+- `pytest -m "not slow"`: **75 passed**, 1 deselected (the slow test).
+- The slow integration test ran 3 times in total (see step 4). The final run passed.
+- `README.md` drafted, with sections for what it does, how to run it, the manual-first method, results (left as "TODO: pending frozen gold set evaluation") and limitations. It makes no accuracy or success claims. The smoke run is described as a pipeline check, and the malformed-tool-call behaviour is listed as a limitation.
