@@ -120,3 +120,11 @@ Removed the three unused worktrees (`../cm-tools`, `../cm-graph`, `../cm-eval`) 
 - `pytest -m "not slow"`: **75 passed**, 1 deselected (the slow test).
 - The slow integration test ran 3 times in total (see step 4). The final run passed.
 - `README.md` drafted, with sections for what it does, how to run it, the manual-first method, results (left as "TODO: pending frozen gold set evaluation") and limitations. It makes no accuracy or success claims. The smoke run is described as a pipeline check, and the malformed-tool-call behaviour is listed as a limitation.
+
+---
+
+## Step 8: push and CI
+
+- Pushed `main`, `6944d92..c690249`, no force.
+- GitHub Actions run 36312384066 (`ci`, job `unit-tests`) **passed** in 28 s: install plus `pytest -m "not slow"` on ubuntu-latest, Python 3.11.
+- Two warnings from GitHub, neither a failure: `actions/checkout@v4` and `actions/setup-python@v5` target the deprecated Node 20; `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19.
