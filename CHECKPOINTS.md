@@ -141,3 +141,19 @@ Same three tasks as before. The harness fixes from the last run work as intended
 - **Failed-attempt tokens in the rate window:** s03 waited 57 s before its call, and there were 0 HTTP 429 retries. The previous run, before this fix, had one 429 at the same point.
 
 The s02 outcome is unchanged: the malformed terminal call recurred on all 3 attempts. s01 `match`, s03 `ask_customer`. 6 successful LLM calls, 7,974 input and 498 output tokens, 121 s wall-clock (most of it pacing waits).
+
+## Step 2: five new smoke tasks
+
+Appended to `eval/smoke/smoke.jsonl`. **New: s04, s05, s06, s07, s08.** The originals s01 to s03 are unchanged. All were invented by Claude Code and checked against the CSV; each `broker_notes` says so. They are not gold.
+
+| id | request (short) | exact matches | what a single relaxation gives | expected (guess) |
+|---|---|---|---|---|
+| s04 | Q5, 2019+, automatic, <20k mi, £28,000 | 0 | price alone: from £28,070 (0.25% over); year alone: newest 2018 | relaxed_match, price_max |
+| s05 | TT, 2018+, automatic, ≤£20,000 | 0 | year_min 2017: 35 cars; price alone: from £22,300 (11.5% over) | relaxed_match, year_min |
+| s06 | A1, 2020, automatic, ≤£14,000 | 0 | newest within budget is 2018; price alone: from £20,495 (46% over) | relaxed_match, year_min |
+| s07 | R8, 2018+, <£15,000 | 0 | cheapest R8 of any year £33,950 | no_match |
+| s08 | Q8, <£25,000 | 0 | cheapest Q8 £48,022 | no_match |
+
+The expected relaxed constraints are guesses, because the real relaxation policy hasn't been written yet. The diagnosis in step 4 counts clean versus malformed terminal calls, so it doesn't depend on those guesses.
+
+Relaxation and no-match tasks used in step 4: **s02, s04, s05, s06, s07, s08** (6 tasks).
