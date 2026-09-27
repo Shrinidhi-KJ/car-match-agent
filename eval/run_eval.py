@@ -112,6 +112,20 @@ def is_tool_use_failed(exc: Exception) -> bool:
     return getattr(exc, "status_code", None) == 400 and "tool_use_failed" in str(exc)
 
 
+def provider_error(exc: Exception) -> dict[str, Any]:
+    """The API's error body, untruncated: message, code and (for tool_use_failed) the raw failed_generation."""
+    body = getattr(exc, "body", None)
+    err = body.get("error", body) if isinstance(body, dict) else None
+    if not isinstance(err, dict):
+        return {"status_code": getattr(exc, "status_code", None), "message": str(exc)}
+    return {
+        "status_code": getattr(exc, "status_code", None),
+        "code": err.get("code"),
+        "message": err.get("message"),
+        "failed_generation": err.get("failed_generation"),
+    }
+
+
 def retry_after_s(exc: Exception) -> float | None:
     response = getattr(exc, "response", None)
     value = getattr(response, "headers", {}).get("retry-after") if response is not None else None
@@ -165,9 +179,10 @@ class EvalCaller:
                     self.stats["tool_use_failed_retries"] += 1
                     self.pacer.record(estimate)  # the failed generation still used tokens
                     self.log.write("llm_retry_tool_use_failed", task_id=self.task_id, attempt=tool_failed,
-                                   error=repr(exc)[:500])
+                                   **provider_error(exc))
                     continue
                 self.log.write("llm_error", task_id=self.task_id, error=repr(exc)[:500],
+                               tool_use_failed=is_tool_use_failed(exc), **provider_error(exc),
                                rate_limit_retries=rate_limited, tool_use_failed_retries=tool_failed)
                 raise
             latency = self.clock() - t0
@@ -330,6 +345,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--confirm-test-split", action="store_true")
     parser.add_argument("--out-dir", type=Path, default=RESULTS_DIR)
     parser.add_argument("--budget", type=int, default=PACING_BUDGET, help="tokens per rolling minute")
+    parser.add_argument("--ids", help="comma-separated task ids to run (default: all)")
+    parser.add_argument("--model", help="override the Groq model (diagnosis only; default is llm.GROQ_MODEL)")
+    parser.add_argument("--reasoning-effort", help="override reasoning_effort; 'unset' sends none")
+    parser.add_argument("--max-tokens", type=int, help="override max output tokens per call")
+    parser.add_argument("--label", help="extra label in the output file name")
     args = parser.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="replace")  # Windows consoles can't encode every character
@@ -344,23 +364,40 @@ def main(argv: list[str] | None = None) -> int:
         tasks_path, name = args.tasks, args.tasks.stem
 
     from carmatch.graph import build_graph
-    from carmatch.llm import GROQ_MODEL, REASONING_EFFORT, make_llm
+    from carmatch.llm import GROQ_MODEL, MAX_OUTPUT_TOKENS, REASONING_EFFORT, make_llm
+
+    if args.split and (args.model or args.reasoning_effort or args.max_tokens):
+        raise SystemExit("Model overrides are for diagnosis on non-gold task files only.")
+    model = args.model or GROQ_MODEL
+    if args.reasoning_effort is None:
+        effort = REASONING_EFFORT
+    else:
+        effort = None if args.reasoning_effort == "unset" else args.reasoning_effort
+    max_tokens = args.max_tokens or MAX_OUTPUT_TOKENS
 
     tasks = load_tasks(tasks_path)
+    if args.ids:
+        wanted = args.ids.split(",")
+        tasks = [t for t in tasks if t["id"] in wanted]
+        if len(tasks) != len(wanted):
+            raise SystemExit(f"unknown task ids in {wanted}")
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    stem = f"{name}_{timestamp}"
+    stem = f"{name}_{args.label}_{timestamp}" if args.label else f"{name}_{timestamp}"
     args.out_dir.mkdir(parents=True, exist_ok=True)
     log = EventLog(args.out_dir / f"{stem}.log.jsonl")
     caller = EvalCaller(TokenPacer(args.budget), log)
-    graph = build_graph(make_llm(max_retries=0), llm_caller=caller)
+    llm = make_llm(max_retries=0, model=model, reasoning_effort=effort, max_tokens=max_tokens)
+    graph = build_graph(llm, llm_caller=caller)
 
     meta = {
         "name": name,
         "timestamp": timestamp,
         "tasks_file": str(tasks_path.resolve().relative_to(ROOT)) if ROOT in tasks_path.resolve().parents else str(tasks_path),
         "tasks_sha256": sha256_file(tasks_path),
-        "model": GROQ_MODEL,
-        "reasoning_effort": REASONING_EFFORT,
+        "model": model,
+        "reasoning_effort": effort,
+        "max_tokens": max_tokens,
+        "task_ids": [t["id"] for t in tasks],
         "prompt_fingerprint": graph.prompt_fingerprint,
         "pacing_budget_tokens_per_min": args.budget,
         "git": git_state(),

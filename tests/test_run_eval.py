@@ -226,3 +226,41 @@ def test_partial_trace_survives_a_mid_run_exception(tmp_path, mini_df):
     assert [s["name"] for s in record["run"]["trace"]] == ["search_listings"]
     assert record["scores"]["constraints_correct"] is True
     assert record["scores"]["outcome_correct"] is False
+
+
+class GroqStyleToolUseFailed(Exception):
+    """Shaped like groq.BadRequestError: status_code plus a dict body."""
+
+    status_code = 400
+
+    def __init__(self, generation):
+        super().__init__("tool_use_failed")
+        self.body = {"error": {"message": "attempted to call tool 'commentary'", "type": "invalid_request_error",
+                               "code": "tool_use_failed", "failed_generation": generation}}
+
+    def __str__(self):
+        return f"Error code: 400 - {self.body}"
+
+
+def test_raw_failed_generation_is_logged_untruncated(tmp_path):
+    raw = '{"name": "commentary", "arguments": {"message": "' + "x" * 2000 + '"}}'
+    log = EventLog(tmp_path / "log.jsonl")
+    caller = EvalCaller(TokenPacer(10_000), log, sleep=lambda s: None, max_tool_use_failed_retries=1)
+    with pytest.raises(GroqStyleToolUseFailed):
+        caller(Flaky(5, exc=lambda _msg: GroqStyleToolUseFailed(raw)), [HumanMessage("hi")])
+    events = [json.loads(line) for line in (tmp_path / "log.jsonl").read_text().splitlines()]
+    assert [e["event"] for e in events] == ["llm_retry_tool_use_failed", "llm_error"]
+    for e in events:
+        assert e["failed_generation"] == raw
+        assert e["code"] == "tool_use_failed"
+    assert events[-1]["tool_use_failed"] is True
+
+
+def test_make_llm_overrides_do_not_change_defaults(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "test-not-a-real-key")
+    from carmatch.llm import GROQ_MODEL, REASONING_EFFORT, make_llm
+
+    default = make_llm()
+    assert default.model_name == GROQ_MODEL and default.reasoning_effort == REASONING_EFFORT
+    other = make_llm(model="openai/gpt-oss-20b", reasoning_effort=None, max_tokens=500)
+    assert other.model_name == "openai/gpt-oss-20b" and other.reasoning_effort is None and other.max_tokens == 500

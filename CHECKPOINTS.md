@@ -157,3 +157,23 @@ Appended to `eval/smoke/smoke.jsonl`. **New: s04, s05, s06, s07, s08.** The orig
 The expected relaxed constraints are guesses, because the real relaxation policy hasn't been written yet. The diagnosis in step 4 counts clean versus malformed terminal calls, so it doesn't depend on those guesses.
 
 Relaxation and no-match tasks used in step 4: **s02, s04, s05, s06, s07, s08** (6 tasks).
+
+## Step 3: Groq models available via the API
+
+From `GET /models` (the `supported_features` field) and response rate-limit headers:
+
+| model | supported_features | tokens/min | requests/day |
+|---|---|---|---|
+| openai/gpt-oss-120b | tools, json_mode, structured_outputs, reasoning | 8,000 | 1,000 |
+| openai/gpt-oss-20b | tools, json_mode, structured_outputs, reasoning | 8,000 | 1,000 |
+| openai/gpt-oss-safeguard-20b | tools, json_mode, structured_outputs, reasoning | 8,000 | 1,000 |
+| qwen/qwen3.8-27b | tools, json_mode, reasoning | 8,000 | 1,000 (plus a 1,000 output-tokens/min cap, seen in a 429 in Phase 0; not in the headers) |
+| allam-2-7b | json_mode | 6,000 | 7,000 |
+| meta-llama/llama-prompt-guard-2-86m | json_mode | - | - |
+| meta-llama/llama-prompt-guard-2-22m, whisper-large-v3(-turbo), canopylabs/orpheus-* | none listed (guard, speech-to-text, text-to-speech) | - | - |
+
+Four models claim tool calling: gpt-oss-120b, gpt-oss-20b, gpt-oss-safeguard-20b (a safety-classifier variant) and qwen3.8-27b.
+
+## Step 5 (done before step 4): raw failed output in the log
+
+`llm_retry_tool_use_failed` and `llm_error` log events now include Groq's untruncated `failed_generation`, plus `code` and `message`. There are also diagnosis-only overrides (`--model`, `--reasoning-effort`, `--max-tokens`, `--ids`, `--label`), which are refused for gold splits. The default model is unchanged. 77 unit tests pass.
