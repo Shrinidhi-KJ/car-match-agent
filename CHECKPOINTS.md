@@ -177,3 +177,70 @@ Four models claim tool calling: gpt-oss-120b, gpt-oss-20b, gpt-oss-safeguard-20b
 ## Step 5 (done before step 4): raw failed output in the log
 
 `llm_retry_tool_use_failed` and `llm_error` log events now include Groq's untruncated `failed_generation`, plus `code` and `message`. There are also diagnosis-only overrides (`--model`, `--reasoning-effort`, `--max-tokens`, `--ids`, `--label`), which are refused for gold splits. The default model is unchanged. 77 unit tests pass.
+
+## Step 4 and 6: terminal-call diagnosis on 6 relaxation/no-match smoke tasks
+
+Tasks s02, s04, s05, s06, s07 and s08, one run each per setup. The system prompt and tool descriptions are unchanged; the prompt fingerprint is `eca9cd476398` in all four runs. The counts come from `python -m eval.diagnose_terminal_calls <results.json ...>`, which reads each run's results JSON and JSON-lines log.
+
+| setup | model | reasoning_effort | tasks run | clean terminal calls | malformed calls (provider-rejected) | gave_up | errors | total tokens (in + out) | time (s) |
+|---|---|---|---|---|---|---|---|---|---|
+| A | openai/gpt-oss-120b | low | 6 | 2 | 6 (5 `tool_use_failed`, 1 `output_parse_failed`), in 3 tasks | 2 | 2 | 40,492 (38,177 + 2,315) | 428.5 |
+| B | openai/gpt-oss-120b | medium | 6 | 5 | 0 | 1 | 0 | 45,010 (39,464 + 5,546) | 429.4 |
+| C | openai/gpt-oss-20b | low | 6 | 6 | 0 | 0 | 0 | 35,797 (33,701 + 2,096) | 304.8 |
+| D | qwen/qwen3.8-27b | not set (model default); max_tokens 1000 | 6 | 5 | 0 | 1 | 0 | 57,798 (55,711 + 2,087) | 547.3 |
+
+How the columns are counted:
+- **clean terminal calls:** tasks that ended with a successful `submit_answer` or `ask_customer`.
+- **malformed calls:** every attempt Groq rejected with 400 `tool_use_failed` or `output_parse_failed`. That includes the harness's retries: up to 2 per call, for `tool_use_failed` only.
+- **tokens:** successful LLM calls only.
+- **time:** summed task wall-clock, including pacing waits.
+- Terminal calls rejected by our own schema: 0 in every setup.
+
+**Conditions:**
+- D used `max_tokens=1000` because of qwen's free-tier cap of 1,000 output tokens per minute. It hit 1 HTTP 429 retry and fit within the limits.
+- A ran at the same time as C and D; B ran alone after A.
+- HTTP 429 retries: A 5, B 0, C 0, D 1.
+
+**Outcome per task** (facts, not scored against the guessed expectations):
+
+| task | A (120b low) | B (120b medium) | C (20b low) | D (qwen) |
+|---|---|---|---|---|
+| s02 | error (malformed ×3) | relaxed_match, price_max | relaxed_match, price_max | no_match |
+| s04 | match | relaxed_match, price_max | relaxed_match, transmission | relaxed_match, price_max |
+| s05 | relaxed_match (after 1 malformed retry) | relaxed_match, year_min | relaxed_match, transmission | gave_up |
+| s06 | gave_up | gave_up | no_match | no_match |
+| s07 | error (1 malformed, then `output_parse_failed`) | relaxed_match, price_max | no_match | no_match |
+| s08 | gave_up | relaxed_match, price_max | no_match | no_match |
+
+**gave_up traces, in brief:**
+- A s06: 5 searches with varied limits, no terminal call.
+- A s08: 4 tool calls and 2 replies with no tool call.
+- B s06: 5 searches with varied price limits.
+- D s05: after market_summary, 4 identical searches with `model: null, transmission: null`.
+
+**Examples of raw malformed output** (Groq's `failed_generation`, from setup A's log `smoke_A-120b-low_20260927-182200.log.jsonl`):
+
+1. s02, `tool_use_failed` ("attempted to call tool 'json'"). The arguments are a complete submit_answer payload under the tool name `json`:
+   ```
+   {"name": "json", "arguments": {
+     "listing_ids": ["L00045", "L07562", "L00074"],
+     "message": "I couldn't find any A3s that meet all your criteria at £15,000, but by extending the budget slightly to £16,000 you get three options that match everything else.",
+     "outcome": "relaxed_match",
+     "relaxed_constraint": "price_max"
+   }}
+   ```
+2. s07, `tool_use_failed` ("attempted to call tool 'commentary'"). Again a submit_answer payload, here offering an R8 at £93,950 for a £15,000 budget:
+   ```
+   {"name": "commentary", "arguments": {
+     "listing_ids": ["L04391"],
+     "message": "I couldn't find an R8 from 2018 or newer under £15,000, but there is one from 2018 priced at £93,950, which meets all your other criteria.",
+     "outcome": "relaxed_match",
+     "relaxed_constraint": "price_max"
+   }}
+   ```
+3. s07 retry, `output_parse_failed` ("The model generated output that could not be parsed"). The whole generation was:
+   ```
+   We relaxed price to min. Provide relaxed_match.
+   ```
+
+In all 6 provider-rejected attempts in A, the model was trying to submit the final answer; none were search or market_summary calls. In examples 1 and 2, the arguments would have passed our `submit_answer` schema if the tool name had been correct.
